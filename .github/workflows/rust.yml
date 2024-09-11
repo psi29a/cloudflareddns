@@ -17,13 +17,14 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Cache dependencies
-      uses: Swatinem/rust-cache@v2.2.1
+      uses: Swatinem/rust-cache@v2.7.3
     - name: Build
       run: cargo build --release --verbose
     - name: Artefacts
       uses: actions/upload-artifact@v4
       with:
         name: cloudflareddns
-        path: target/release/*
+        path: |
+          target/release/cloudflare
     - name: Run tests
       run: cargo test --verbose
