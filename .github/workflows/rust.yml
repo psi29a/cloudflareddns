@@ -25,6 +25,8 @@ jobs:
       with:
         name: cloudflareddns
         path: |
-          target/release/cloudflare
+          target/release/cloudflareddns
+          LICENSE
+          README.md
     - name: Run tests
       run: cargo test --verbose
