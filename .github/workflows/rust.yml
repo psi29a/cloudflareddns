@@ -10,8 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  ubuntu-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,8 +22,30 @@ jobs:
     - name: Artefacts
       uses: actions/upload-artifact@v4
       with:
-        name: cloudflareddns
+        name: cloudflareddns-${{ runner.os }}-${{ runner.arch }}
         path: |
-          target/release/cloudflare
+          target/release/cloudflareddns
+          LICENSE
+          README.md
     - name: Run tests
       run: cargo test --verbose
+
+  macos-build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2.7.3
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflareddns-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            target/release/cloudflareddns
+            LICENSE
+            README.md
+      - name: Run tests
+        run: cargo test --verbose

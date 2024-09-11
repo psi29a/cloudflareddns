@@ -1,6 +1,11 @@
 [package]
 name = "cloudflareddns"
 version = "0.1.0"
+authors = ["Bret Curtis <psi29a@gmail.com>"]
+description = "small, fast rust based cloudflare dns zone updator"
+license = "GPLv3"
+readme = "README.md"
+repository = "https://github.com/psi29a/cloudflareddns"
 edition = "2021"
 
 [dependencies]
