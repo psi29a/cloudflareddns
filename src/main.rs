@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use log;
 use reqwest::Client;
 use serde::Deserialize;
@@ -14,18 +14,60 @@ struct CloudflareConfig {
     cloudflare_zone_api_token: String,
     dns_record: String, // Comma-separated DNS records
     ttl: u32,
-    proxied: bool,
     what_ip: String,
 }
 
-/// Command-line options
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(version, about, long_about = None)]
 struct Args {
-    /// Enable verbose output
-    #[arg(short, long)]
+    #[arg(long)]
+    zoneid: Option<String>,
+
+    #[arg(long)]
+    api_token: Option<String>,
+
+    #[arg(long)]
+    dns_record: Option<String>, // Comma-separated DNS records
+
+    #[arg(long)]
+    ttl: Option<u32>,
+
+    #[arg(long)]
+    what_ip: Option<String>,
+
+    #[arg(long)]
+    config_file: Option<String>,
+
+    #[arg(long, default_value = "false")]
     verbose: bool,
 }
+
+fn read_config_from_file(config_file: String) -> Result<CloudflareConfig, Box<dyn error::Error>> {
+    let settings = Config::builder()
+        .add_source(config::File::with_name(&*config_file))
+        .build()?;
+    let config: CloudflareConfig = settings.try_deserialize()?;
+    Ok(config)
+}
+
+fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> CloudflareConfig {
+    let default_config = file_config.unwrap_or_else(|| CloudflareConfig {
+        zoneid: "".to_string(),
+        cloudflare_zone_api_token: "".to_string(),
+        dns_record: "".to_string(),
+        ttl: 1,
+        what_ip: "external".to_string(),
+    });
+
+    CloudflareConfig {
+        zoneid: cli_args.zoneid.unwrap_or(default_config.zoneid),
+        cloudflare_zone_api_token: cli_args.api_token.unwrap_or(default_config.cloudflare_zone_api_token),
+        dns_record: cli_args.dns_record.unwrap_or(default_config.dns_record),
+        ttl: cli_args.ttl.unwrap_or(default_config.ttl),
+        what_ip: cli_args.what_ip.unwrap_or(default_config.what_ip),
+    }
+}
+
 
 fn init_logger(verbose: bool) {
     let log_level = if verbose {
@@ -37,15 +79,6 @@ fn init_logger(verbose: bool) {
     env_logger::builder()
         .filter(None, log_level)
         .init();
-}
-
-fn read_config(config_file: &str) -> Result<CloudflareConfig, Box<dyn error::Error>> {
-    let settings = Config::builder()
-        .add_source(config::File::with_name(config_file))
-        .build()?;
-
-    let config: CloudflareConfig = settings.try_deserialize()?;
-    Ok(config)
 }
 
 async fn get_external_ip() -> Result<IpAddr, Box<dyn error::Error>> {
@@ -124,7 +157,6 @@ async fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr) -> Result<(
             "name": record,
             "content": ip.to_string(),
             "ttl": config.ttl,
-            "proxied": config.proxied
         });
 
         // Update the DNS record
@@ -155,9 +187,31 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let args = Args::parse();
     init_logger(args.verbose);
 
-    log::info!("Starting Cloudflare DNS updater...");
+    // Default config path
+    let default_config_path = "CloudFlareDDNS.ini";
 
-    let config = read_config("cloudflareddns.ini")?;
+    // Determine whether to use config file or CLI arguments
+    let config_file = args.config_file.clone().unwrap_or(default_config_path.to_string());
+
+    // Try reading the config file if it exists, otherwise proceed with CLI args
+    let file_config = if std::path::Path::new(&config_file).exists() {
+        Some(read_config_from_file(config_file)?)
+    } else {
+        None
+    };
+
+    // Merge CLI arguments and config file values
+    let config = merge_config(args, file_config);
+
+    // Check if all required fields are filled, otherwise display help
+    if config.zoneid.is_empty() || config.cloudflare_zone_api_token.is_empty() || config.dns_record.is_empty() {
+        println!("Missing required arguments: zoneid, api_token, or dns_record");
+        Args::command().print_help()?;
+        return Ok(());
+    }
+
+    // now start the actual work
+    log::info!("Starting Cloudflare DNS updater...");
 
     let ip = match config.what_ip.as_str() {
         "external" => get_external_ip().await?,
