@@ -9,7 +9,5 @@ dns_record="ddns.example.com,ddns2.example.com"
 zoneid="ChangeMe"
 ## Cloudflare Zone API Token
 cloudflare_zone_api_token="ChangeMe"
-## Use Cloudflare proxy on dns record true/false
-proxied="false"
 ## 120-7200 in seconds or 1 for Auto
 ttl=120
