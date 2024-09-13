@@ -10,63 +10,37 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ubuntu-linux-amd64-build:
+  ubuntu-build:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-musl, x86_64-pc-windows-gnu]
 
     steps:
       - uses: actions/checkout@v4
+
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2.7.3
-      - name: Build
+
+      - name: Build for ${{ matrix.target }}
+        if: matrix.target != 'x86_64-unknown-linux-gnu'
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --all --release --target=${{ matrix.target }}
+
+      - name: Build for ${{ matrix.target }}
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo build --release --verbose
+
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
-          name: cloudflareddns-${{ runner.os }}-${{ runner.arch }}
+          name: cloudflareddns-${{ matrix.target }}
           path: |
-            target/**/cloudflareddns
-            LICENSE
-            README.md
-
-  ubuntu-linux-arm64-build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2.7.3
-      - uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --all --release --target=aarch64-unknown-linux-musl
-      - name: Artefacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloudflareddns-${{ runner.os }}-arm64
-          path: |
-            target/**/cloudflareddns
-            LICENSE
-            README.md
-
-  ubuntu-windows-amd64-build:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2.7.3
-      - uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --all --release --target=x86_64-pc-windows-gnu
-      - name: Artefacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloudflareddns-windows-${{ runner.arch }}
-          path: |
-            target/**/cloudflareddns
+            target/**/cloudflareddns*
             LICENSE
             README.md
 
