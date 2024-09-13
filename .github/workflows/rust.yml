@@ -36,7 +36,7 @@ jobs:
         run: cargo build --release --verbose
 
       - name: Copy build
-        run: find target -type f -name 'cloudflareddns' -or -name 'cloudflareddns.exe' -exec mv -t . {} +
+        run: find target -type f -name 'cloudflareddns' -or -name 'cloudflareddns.exe' | xargs -I '{}' mv '{}' .
 
       - name: Artefacts
         uses: actions/upload-artifact@v4
@@ -58,7 +58,7 @@ jobs:
       - name: Build
         run: cargo build --release --verbose
       - name: Copy build
-        run: find target -type f -name 'cloudflareddns' | mv {} . ;
+        run: find target -type f -name 'cloudflareddns' | xargs -I '{}' mv '{}' .
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
