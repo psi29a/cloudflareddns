@@ -36,7 +36,7 @@ jobs:
         run: cargo build --release --verbose
 
       - name: Install target for ${{ matrix.target }}
-        run: cargo install --path .
+        run: cargo install --root .
 
       - name: Artefacts
         uses: actions/upload-artifact@v4
@@ -57,7 +57,7 @@ jobs:
       - name: Build
         run: cargo build --release --verbose
       - name: Install target
-        run: cargo install --path .
+        run: cargo install --root .
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
