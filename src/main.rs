@@ -150,7 +150,7 @@ async fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr) -> Result<(
 
         // Extract the DNS record ID
         let record_id = json["result"][0]["id"].as_str().unwrap();
-        log::info!("DNS Record ID for {} is {}", record, record_id);
+        log::debug!("DNS Record ID for {} is {}", record, record_id);
 
         let body = json!({
             "type": "A",
@@ -176,7 +176,7 @@ async fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr) -> Result<(
             return Err("Failed to update DNS record".into());
         }
 
-        log::info!("DNS Record for {} successfully updated to IP: {}", record, ip);
+        log::debug!("DNS Record for {} successfully updated to IP: {}", record, ip);
     }
 
     Ok(())
@@ -211,7 +211,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     }
 
     // now start the actual work
-    log::info!("Starting Cloudflare DNS updater...");
+    log::debug!("Starting Cloudflare DNS updater...");
 
     let ip = match config.what_ip.as_str() {
         "external" => get_external_ip().await?,
