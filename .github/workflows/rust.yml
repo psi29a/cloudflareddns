@@ -43,9 +43,9 @@ jobs:
         with:
           name: cloudflareddns-${{ matrix.target }}
           path: |
-            cloudflareddns*
             LICENSE
             README.md
+            cloudflare*
 
   macos-arm64-build:
     runs-on: macos-latest
@@ -63,6 +63,6 @@ jobs:
         with:
           name: cloudflareddns-${{ runner.os }}-${{ runner.arch }}
           path: |
-            cloudflareddns
             LICENSE
             README.md
+            cloudflare*
