@@ -58,7 +58,7 @@ jobs:
       - name: Build
         run: cargo build --release --verbose
       - name: Copy build
-        run: find target -type f -name 'cloudflareddns' -exec mv . {} +
+        run: find target -type f -name 'cloudflareddns' -exec mv {} . +
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
