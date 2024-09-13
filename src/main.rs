@@ -1,16 +1,15 @@
 use clap::{CommandFactory, Parser};
 use log;
-use reqwest::Client;
 use serde::Deserialize;
 use config::Config;
 use std::net::IpAddr;
-use std::error;
+use std::error::Error;
 use serde_json::json;
-use tokio::process::Command;
+use local_ip_address::local_ip;
 
 #[derive(Debug, Deserialize)]
 struct CloudflareConfig {
-    zoneid: String,
+    zone_id: String,
     cloudflare_zone_api_token: String,
     dns_record: String, // Comma-separated DNS records
     ttl: u32,
@@ -39,10 +38,16 @@ struct Args {
     config_file: Option<String>,
 
     #[arg(long, default_value = "false")]
+    dry: bool,
+
+    #[arg(long, default_value = "false")]
     verbose: bool,
+
+    #[arg(long, default_value = "false")]
+    debug: bool,
 }
 
-fn read_config_from_file(config_file: String) -> Result<CloudflareConfig, Box<dyn error::Error>> {
+fn read_config_from_file(config_file: String) -> Result<CloudflareConfig, Box<dyn Error>> {
     let settings = Config::builder()
         .add_source(config::File::with_name(&*config_file))
         .build()?;
@@ -52,7 +57,7 @@ fn read_config_from_file(config_file: String) -> Result<CloudflareConfig, Box<dy
 
 fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> CloudflareConfig {
     let default_config = file_config.unwrap_or_else(|| CloudflareConfig {
-        zoneid: "".to_string(),
+        zone_id: "".to_string(),
         cloudflare_zone_api_token: "".to_string(),
         dns_record: "".to_string(),
         ttl: 1,
@@ -60,7 +65,7 @@ fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> Cloudf
     });
 
     CloudflareConfig {
-        zoneid: cli_args.zoneid.unwrap_or(default_config.zoneid),
+        zone_id: cli_args.zoneid.unwrap_or(default_config.zone_id),
         cloudflare_zone_api_token: cli_args.api_token.unwrap_or(default_config.cloudflare_zone_api_token),
         dns_record: cli_args.dns_record.unwrap_or(default_config.dns_record),
         ttl: cli_args.ttl.unwrap_or(default_config.ttl),
@@ -68,12 +73,13 @@ fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> Cloudf
     }
 }
 
-
-fn init_logger(verbose: bool) {
-    let log_level = if verbose {
+fn init_logger(verbose: bool, dry: bool, debug: bool) {
+    let log_level = if debug {
         log::LevelFilter::Debug
-    } else {
+    } else if verbose || dry {
         log::LevelFilter::Info
+    } else {
+        log::LevelFilter::Warn
     };
 
     env_logger::builder()
@@ -81,68 +87,28 @@ fn init_logger(verbose: bool) {
         .init();
 }
 
-async fn get_external_ip() -> Result<IpAddr, Box<dyn error::Error>> {
-    let client = Client::new();
-    let resp = client.get("https://checkip.amazonaws.com").send().await?;
-    let ip_str = resp.text().await?.trim().to_string();
-    let ip: IpAddr = ip_str.parse()?;
+fn get_external_ip() -> Result<IpAddr, Box<dyn Error>> {
+    let resp = minreq::get("https://checkip.amazonaws.com").send()?;
+    let ip: IpAddr = resp.as_str()?.trim().to_string().parse()?;
     Ok(ip)
 }
 
-async fn get_internal_ip() -> Result<String, Box<dyn error::Error>> {
-    let output = Command::new("ip")
-        .args(&["route", "get", "1.1.1.1"])
-        .output().await?;
-
-    if !output.status.success() {
-        return Err("Failed to get internal IP".into());
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let interface: &str = stdout
-        .lines()
-        .find(|line| line.contains("dev"))
-        .and_then(|line| line.split_whitespace().nth(4))
-        .ok_or("No valid interface found")?;
-
-    let ip_output = Command::new("ip")
-        .args(&["-o", "-4", "addr", "show", interface, "scope", "global"])
-        .output().await?;
-
-    let ip = String::from_utf8_lossy(&ip_output.stdout)
-        .lines()
-        .next()
-        .ok_or("No IP address found")?
-        .split_whitespace()
-        .nth(3)
-        .unwrap()
-        .split('/')
-        .next()
-        .unwrap()
-        .to_string();
-
-    Ok(ip)
-}
-
-async fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr) -> Result<(), Box<dyn error::Error>> {
-    let client = Client::new();
-
+fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr, dry: bool) -> Result<(), Box<dyn Error>> {
     // Split comma-separated DNS records
     let dns_records: Vec<&str> = config.dns_record.split(',').collect();
 
     for record in dns_records {
-        log::debug!("Fetching DNS record for: {}", record);
+        log::info!("Fetching DNS record for: {}", record);
 
-        let res = client.get(format!(
+        let res = minreq::get(format!(
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records?type=A&name={}",
-            config.zoneid, record
+            config.zone_id, record
         ))
-            .header("Authorization", format!("Bearer {}", config.cloudflare_zone_api_token))
-            .header("Content-Type", "application/json")
-            .send()
-            .await?;
+            .with_header("Authorization", format!("Bearer {}", config.cloudflare_zone_api_token))
+            .with_header("Content-Type", "application/json")
+            .send()?;
 
-        let json: serde_json::Value = res.json().await?;
+        let json: serde_json::Value = res.json()?;
         if !json["success"].as_bool().unwrap_or(false) {
             log::error!("Error getting DNS record info: {}", json);
             return Err("Error getting DNS record info".into());
@@ -150,7 +116,7 @@ async fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr) -> Result<(
 
         // Extract the DNS record ID
         let record_id = json["result"][0]["id"].as_str().unwrap();
-        log::debug!("DNS Record ID for {} is {}", record, record_id);
+        log::info!("DNS Record ID for {} is {}", record, record_id);
 
         let body = json!({
             "type": "A",
@@ -159,33 +125,39 @@ async fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr) -> Result<(
             "ttl": config.ttl,
         });
 
-        // Update the DNS record
-        let update_res = client.put(format!(
-            "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
-            config.zoneid, record_id
-        ))
-            .header("Authorization", format!("Bearer {}", config.cloudflare_zone_api_token))
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .await?;
+        if dry {
+            log::info!("Test mode enabled, skipping DNS record update");
+            log::info!("Would have updated DNS record for {} to IP: {}", record, ip);
+            log::info!("body: {}", body);
+            continue;
+        }
 
-        let update_json: serde_json::Value = update_res.json().await?;
+        // Update the DNS record
+        let update_res = minreq::put(format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
+            config.zone_id, record_id
+        ))
+            .with_header("Authorization", format!("Bearer {}", config.cloudflare_zone_api_token))
+            .with_header("Content-Type", "application/json")
+            .with_json(&body)?
+            .send()?;
+
+        let update_json: serde_json::Value = update_res.json()?;
         if !update_json["success"].as_bool().unwrap_or(false) {
             log::error!("Failed to update DNS record: {}", update_json);
             return Err("Failed to update DNS record".into());
         }
 
-        log::debug!("DNS Record for {} successfully updated to IP: {}", record, ip);
+        log::info!("DNS Record for {} successfully updated to IP: {}", record, ip);
     }
 
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    init_logger(args.verbose);
+    let dry = args.dry;
+    init_logger(args.verbose, dry, args.debug);
 
     // Default config path
     let default_config_path = "CloudFlareDDNS.ini";
@@ -204,25 +176,24 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let config = merge_config(args, file_config);
 
     // Check if all required fields are filled, otherwise display help
-    if config.zoneid.is_empty() || config.cloudflare_zone_api_token.is_empty() || config.dns_record.is_empty() {
+    if config.zone_id.is_empty() || config.cloudflare_zone_api_token.is_empty() || config.dns_record.is_empty() {
         println!("Missing required arguments: zoneid, api_token, or dns_record");
         Args::command().print_help()?;
         return Ok(());
     }
 
     // now start the actual work
-    log::debug!("Starting Cloudflare DNS updater...");
+    log::info!("Starting Cloudflare DNS updater...");
 
     let ip = match config.what_ip.as_str() {
-        "external" => get_external_ip().await?,
-        "internal" => {
-            let ip_str = get_internal_ip().await?;
-            ip_str.parse()?
-        },
+        "external" => get_external_ip()?,
+        "internal" => local_ip().unwrap(),
         _ => return Err("Invalid what_ip option".into()),
     };
 
-    update_cloudflare_dns(config, ip).await?;
+    log::info!("IP address ({}): {}", config.what_ip, ip);
+
+    update_cloudflare_dns(config, ip, dry)?;
 
     Ok(())
 }
