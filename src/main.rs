@@ -1,13 +1,10 @@
 use clap::{CommandFactory, Parser};
 use log;
-use serde::Deserialize;
-use config::Config;
 use std::net::IpAddr;
 use std::error::Error;
 use serde_json::json;
-use local_ip_address::local_ip;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 struct CloudflareConfig {
     zone_id: String,
     cloudflare_zone_api_token: String,
@@ -45,14 +42,6 @@ struct Args {
 
     #[arg(long, default_value = "false")]
     debug: bool,
-}
-
-fn read_config_from_file(config_file: String) -> Result<CloudflareConfig, Box<dyn Error>> {
-    let settings = Config::builder()
-        .add_source(config::File::with_name(&*config_file))
-        .build()?;
-    let config: CloudflareConfig = settings.try_deserialize()?;
-    Ok(config)
 }
 
 fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> CloudflareConfig {
@@ -159,21 +148,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let dry = args.dry;
     init_logger(args.verbose, dry, args.debug);
 
-    // Default config path
-    let default_config_path = "CloudFlareDDNS.ini";
-
-    // Determine whether to use config file or CLI arguments
-    let config_file = args.config_file.clone().unwrap_or(default_config_path.to_string());
-
-    // Try reading the config file if it exists, otherwise proceed with CLI args
-    let file_config = if std::path::Path::new(&config_file).exists() {
-        Some(read_config_from_file(config_file)?)
-    } else {
-        None
-    };
-
     // Merge CLI arguments and config file values
-    let config = merge_config(args, file_config);
+    let config = merge_config(args, None);
 
     // Check if all required fields are filled, otherwise display help
     if config.zone_id.is_empty() || config.cloudflare_zone_api_token.is_empty() || config.dns_record.is_empty() {
@@ -185,11 +161,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // now start the actual work
     log::info!("Starting Cloudflare DNS updater...");
 
-    let ip = match config.what_ip.as_str() {
-        "external" => get_external_ip()?,
-        "internal" => local_ip().unwrap(),
-        _ => return Err("Invalid what_ip option".into()),
-    };
+    let ip= get_external_ip()?;
 
     log::info!("IP address ({}): {}", config.what_ip, ip);
 
