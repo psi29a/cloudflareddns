@@ -36,16 +36,18 @@ jobs:
         run: cargo build --release --verbose
 
       - name: Install target for ${{ matrix.target }}
-        run: cargo install --root .
+        run: cargo install --root ./bin
 
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
           name: cloudflareddns-${{ matrix.target }}
+          compression-level: 9
           path: |
             LICENSE
             README.md
             cloudflare*
+            bin/
 
   macos-arm64-build:
     runs-on: macos-latest
@@ -57,12 +59,14 @@ jobs:
       - name: Build
         run: cargo build --release --verbose
       - name: Install target
-        run: cargo install --root .
+        run: cargo install --root ./bin
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
           name: cloudflareddns-${{ runner.os }}-${{ runner.arch }}
+          compression-level: 9
           path: |
             LICENSE
             README.md
             cloudflare*
+            bin/
