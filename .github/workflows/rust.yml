@@ -23,6 +23,11 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2.7.3
 
+      - name: Install cross target
+        run: |
+          cargo install cross
+          rustup target add ${{ matrix.target }}          
+
       - name: Build for ${{ matrix.target }}
         run: cargo build --release --target=${{ matrix.target }} --verbose
 
