@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ubuntu-amd64-build:
+  ubuntu-linux-amd64-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,7 +28,7 @@ jobs:
             LICENSE
             README.md
 
-  ubuntu-arm64-build:
+  ubuntu-linux-arm64-build:
     runs-on: ubuntu-latest
 
     steps:
@@ -49,7 +49,28 @@ jobs:
             LICENSE
             README.md
 
-  macos-build:
+  ubuntu-windows-amd64-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2.7.3
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --all --release --target=x86_64-pc-windows-gnu
+      - name: Artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflareddns-windows-${{ runner.arch }}
+          path: |
+            target/**/cloudflareddns
+            LICENSE
+            README.md
+
+  macos-arm64-build:
     runs-on: macos-latest
 
     steps:
