@@ -20,7 +20,7 @@ struct CloudflareConfig {
 #[command(version, about, long_about = None)]
 struct Args {
     #[arg(long)]
-    zoneid: Option<String>,
+    zone_id: Option<String>,
 
     #[arg(long)]
     api_token: Option<String>,
@@ -65,7 +65,7 @@ fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> Cloudf
     });
 
     CloudflareConfig {
-        zone_id: cli_args.zoneid.unwrap_or(default_config.zone_id),
+        zone_id: cli_args.zone_id.unwrap_or(default_config.zone_id),
         cloudflare_zone_api_token: cli_args.api_token.unwrap_or(default_config.cloudflare_zone_api_token),
         dns_record: cli_args.dns_record.unwrap_or(default_config.dns_record),
         ttl: cli_args.ttl.unwrap_or(default_config.ttl),
@@ -177,7 +177,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Check if all required fields are filled, otherwise display help
     if config.zone_id.is_empty() || config.cloudflare_zone_api_token.is_empty() || config.dns_record.is_empty() {
-        println!("Missing required arguments: zoneid, api_token, or dns_record");
+        println!("Missing required arguments: zone_id, api_token, or dns_record");
         Args::command().print_help()?;
         return Ok(());
     }
