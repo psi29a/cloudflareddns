@@ -40,6 +40,7 @@ jobs:
         with:
           name: cloudflareddns-${{ matrix.target }}
           path: |
+            !target/**/deps/
             target/**/cloudflareddns*
             LICENSE
             README.md
