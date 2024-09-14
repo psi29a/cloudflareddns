@@ -5,7 +5,6 @@ use config::Config;
 use std::net::IpAddr;
 use std::error::Error;
 use serde_json::json;
-use local_ip_address::local_ip;
 
 #[derive(Debug, Deserialize)]
 struct CloudflareConfig {
@@ -13,7 +12,6 @@ struct CloudflareConfig {
     cloudflare_zone_api_token: String,
     dns_record: String, // Comma-separated DNS records
     ttl: u32,
-    what_ip: String,
 }
 
 #[derive(Parser, Debug)]
@@ -30,9 +28,6 @@ struct Args {
 
     #[arg(long)]
     ttl: Option<u32>,
-
-    #[arg(long)]
-    what_ip: Option<String>,
 
     #[arg(long)]
     config_file: Option<String>,
@@ -61,7 +56,6 @@ fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> Cloudf
         cloudflare_zone_api_token: "".to_string(),
         dns_record: "".to_string(),
         ttl: 1,
-        what_ip: "external".to_string(),
     });
 
     CloudflareConfig {
@@ -69,7 +63,6 @@ fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> Cloudf
         cloudflare_zone_api_token: cli_args.api_token.unwrap_or(default_config.cloudflare_zone_api_token),
         dns_record: cli_args.dns_record.unwrap_or(default_config.dns_record),
         ttl: cli_args.ttl.unwrap_or(default_config.ttl),
-        what_ip: cli_args.what_ip.unwrap_or(default_config.what_ip),
     }
 }
 
@@ -185,13 +178,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // now start the actual work
     log::info!("Starting Cloudflare DNS updater...");
 
-    let ip = match config.what_ip.as_str() {
-        "external" => get_external_ip()?,
-        "internal" => local_ip().unwrap(),
-        _ => return Err("Invalid what_ip option".into()),
-    };
+    let ip = get_external_ip()?;
 
-    log::info!("IP address ({}): {}", config.what_ip, ip);
+    log::info!("IP address: {}", ip);
 
     update_cloudflare_dns(config, ip, dry)?;
 
