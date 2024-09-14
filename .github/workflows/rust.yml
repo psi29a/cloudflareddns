@@ -19,10 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2.7.3
-
       - name: Build for ${{ matrix.target }}
         if: matrix.target != 'x86_64-unknown-linux-gnu'
         uses: actions-rs/cargo@v1
@@ -30,14 +28,17 @@ jobs:
           use-cross: true
           command: build
           args: --all --release --target=${{ matrix.target }}
-
       - name: Build for ${{ matrix.target }}
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: cargo build --release --verbose
-
       - name: Copy build
         run: find target -type f -name 'cloudflareddns' -or -name 'cloudflareddns.exe' | xargs -I '{}' mv '{}' .
-
+      - name: Run UPX
+        uses: crazy-max/ghaction-upx@v3
+        with:
+          version: latest
+          files: cloudflareddns*
+          args: -fq --ultra-brute
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
@@ -46,6 +47,7 @@ jobs:
           path: |
             LICENSE
             README.md
+            config.ini.example
             cloudflare*
 
   macos-arm64-build:
@@ -59,6 +61,11 @@ jobs:
         run: cargo build --release --verbose
       - name: Copy build
         run: find target -type f -name 'cloudflareddns' | xargs -I '{}' mv '{}' .
+#      - name: Run UPX
+#        run: |
+#            brew install upx
+#            upx -fq --ultra-brute cloudflareddns
+#            Error: upx has been disabled because it is crashing for macOS Ventura or above! It was disabled on 2024-09-05
       - name: Artefacts
         uses: actions/upload-artifact@v4
         with:
@@ -67,4 +74,5 @@ jobs:
           path: |
             LICENSE
             README.md
+            config.ini.example
             cloudflare*
