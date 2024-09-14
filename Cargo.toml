@@ -1,6 +1,6 @@
 [package]
 name = "cloudflareddns"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Bret Curtis <psi29a@gmail.com>"]
 description = "small, fast rust based cloudflare dns zone updator"
 license = "GPLv3"
@@ -22,7 +22,7 @@ serde_json = "1.0"
 config = { version = "0.14.0", default-features = false, features= ["rust-ini"] }
 env_logger = { version="0.11.5", default-features = false, features = ["humantime", "auto-color"] }
 log = "0.4.22"
-clap = { version = "4.5.17", default-features = false, features = ["std", "derive"] }
+clap = { version = "4.5.17", default-features = false, features = ["std", "help", "derive"] }
 local-ip-address = "0.6.2"
 minreq = { version = "2.12.0", default-features = false, features= ["json-using-serde", "https-rustls"] }
 
