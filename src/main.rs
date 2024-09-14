@@ -1,65 +1,58 @@
-use clap::{CommandFactory, Parser};
 use log;
 use std::net::IpAddr;
 use std::error::Error;
 use serde_json::json;
 
+const HELP: &str = "\
+small, fast rust based cloudflare dns zone updater
+
+Usage: cloudflareddns [OPTIONS]
+
+Options:
+      --zoneid <ZONEID>
+      --apitoken <API_TOKEN>
+      --dnsrecord <DNS_RECORD>
+      --ttl <TTL>
+      --verbose
+  -h, --help                       Print help
+  -V, --version                    Print version
+";
+
 #[derive(Debug)]
-struct CloudflareConfig {
+struct Args {
     zone_id: String,
-    cloudflare_zone_api_token: String,
+    api_token: String,
     dns_record: String, // Comma-separated DNS records
     ttl: u32,
-    what_ip: String,
+    dry: Option<bool>,
+    verbose: Option<bool>,
+    debug: Option<bool>,
 }
 
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args {
-    #[arg(long)]
-    zone_id: Option<String>,
+fn parse_args() -> Result<Args, pico_args::Error> {
+    let mut pargs = pico_args::Arguments::from_env();
 
-    #[arg(long)]
-    api_token: Option<String>,
-
-    #[arg(long)]
-    dns_record: Option<String>, // Comma-separated DNS records
-
-    #[arg(long)]
-    ttl: Option<u32>,
-
-    #[arg(long)]
-    what_ip: Option<String>,
-
-    #[arg(long)]
-    config_file: Option<String>,
-
-    #[arg(long, default_value = "false")]
-    dry: bool,
-
-    #[arg(long, default_value = "false")]
-    verbose: bool,
-
-    #[arg(long, default_value = "false")]
-    debug: bool,
-}
-
-fn merge_config(cli_args: Args, file_config: Option<CloudflareConfig>) -> CloudflareConfig {
-    let default_config = file_config.unwrap_or_else(|| CloudflareConfig {
-        zone_id: "".to_string(),
-        cloudflare_zone_api_token: "".to_string(),
-        dns_record: "".to_string(),
-        ttl: 1,
-        what_ip: "external".to_string(),
-    });
-
-    CloudflareConfig {
-        zone_id: cli_args.zone_id.unwrap_or(default_config.zone_id),
-        cloudflare_zone_api_token: cli_args.api_token.unwrap_or(default_config.cloudflare_zone_api_token),
-        dns_record: cli_args.dns_record.unwrap_or(default_config.dns_record),
-        ttl: cli_args.ttl.unwrap_or(default_config.ttl),
-        what_ip: cli_args.what_ip.unwrap_or(default_config.what_ip),
+    // Help has a higher priority and should be handled separately.
+    if pargs.contains(["-h", "--help"]) {
+        print!("{}", HELP);
+        std::process::exit(0);
     }
+
+    let args = Args {
+        zone_id: pargs.value_from_str("--zoneid")?,
+        api_token: pargs.value_from_str("--apitoken")?,
+        dns_record: pargs.value_from_str("--dnsrecord")?,
+        ttl: pargs.opt_value_from_fn("--ttl", parse_number)?.unwrap_or(128),
+        dry: pargs.opt_free_from_str()?,
+        verbose: pargs.opt_free_from_str()?,
+        debug: pargs.opt_free_from_str()?,
+    };
+
+    Ok(args)
+}
+
+fn parse_number(s: &str) -> Result<u32, &'static str> {
+    s.parse().map_err(|_| "not a number")
 }
 
 fn init_logger(verbose: bool, dry: bool, debug: bool) {
@@ -82,7 +75,7 @@ fn get_external_ip() -> Result<IpAddr, Box<dyn Error>> {
     Ok(ip)
 }
 
-fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr, dry: bool) -> Result<(), Box<dyn Error>> {
+fn update_cloudflare_dns(config: Args, ip: IpAddr) -> Result<(), Box<dyn Error>> {
     // Split comma-separated DNS records
     let dns_records: Vec<&str> = config.dns_record.split(',').collect();
 
@@ -93,7 +86,7 @@ fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr, dry: bool) -> Res
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records?type=A&name={}",
             config.zone_id, record
         ))
-            .with_header("Authorization", format!("Bearer {}", config.cloudflare_zone_api_token))
+            .with_header("Authorization", format!("Bearer {}", config.api_token))
             .with_header("Content-Type", "application/json")
             .send()?;
 
@@ -114,7 +107,7 @@ fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr, dry: bool) -> Res
             "ttl": config.ttl,
         });
 
-        if dry {
+        if config.dry.unwrap_or(false) {
             log::info!("Test mode enabled, skipping DNS record update");
             log::info!("Would have updated DNS record for {} to IP: {}", record, ip);
             log::info!("body: {}", body);
@@ -126,7 +119,7 @@ fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr, dry: bool) -> Res
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
             config.zone_id, record_id
         ))
-            .with_header("Authorization", format!("Bearer {}", config.cloudflare_zone_api_token))
+            .with_header("Authorization", format!("Bearer {}", config.api_token))
             .with_header("Content-Type", "application/json")
             .with_json(&body)?
             .send()?;
@@ -144,28 +137,26 @@ fn update_cloudflare_dns(config: CloudflareConfig, ip: IpAddr, dry: bool) -> Res
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-    let dry = args.dry;
-    init_logger(args.verbose, dry, args.debug);
+    // parse command line arguments
+    let args = match parse_args() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Error: {}.", e);
+            std::process::exit(1);
+        }
+    };
 
-    // Merge CLI arguments and config file values
-    let config = merge_config(args, None);
-
-    // Check if all required fields are filled, otherwise display help
-    if config.zone_id.is_empty() || config.cloudflare_zone_api_token.is_empty() || config.dns_record.is_empty() {
-        println!("Missing required arguments: zone_id, api_token, or dns_record");
-        Args::command().print_help()?;
-        return Ok(());
-    }
+    //  setup logging
+    init_logger(args.verbose.unwrap_or(false), args.dry.unwrap_or(false), args.debug.unwrap_or(false));
 
     // now start the actual work
     log::info!("Starting Cloudflare DNS updater...");
 
+    // get external IP address
     let ip= get_external_ip()?;
+    log::info!("IP address: {}", ip);
 
-    log::info!("IP address ({}): {}", config.what_ip, ip);
-
-    update_cloudflare_dns(config, ip, dry)?;
-
+    // update cloudflare DNS
+    update_cloudflare_dns(args, ip)?;
     Ok(())
 }

@@ -2,7 +2,7 @@
 name = "cloudflareddns"
 version = "0.2.0"
 authors = ["Bret Curtis <psi29a@gmail.com>"]
-description = "small, fast rust based cloudflare dns zone updator"
+description = "small, fast rust based cloudflare dns zone updater"
 license = "GPLv3"
 readme = "README.md"
 repository = "https://github.com/psi29a/cloudflareddns"
@@ -20,8 +20,8 @@ panic = "abort"
 serde_json = "1.0"
 env_logger = { version="0.11.5", default-features = false, features = ["humantime", "auto-color"] }
 log = "0.4.22"
-clap = { version = "4.5.17", default-features = false, features = ["std", "derive"] }
 minreq = { version = "2.12.0", default-features = false, features= ["json-using-serde", "https-rustls"] }
+pico-args = "0.5.0"
 
 [dev-dependencies]
 cross = "0.2.5"
