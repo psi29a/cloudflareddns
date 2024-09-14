@@ -1,7 +1,6 @@
 use log;
 use std::net::IpAddr;
 use std::error::Error;
-use serde_json::json;
 
 const HELP: &str = "\
 small, fast rust based cloudflare dns zone updater
@@ -14,6 +13,8 @@ Options:
       --dnsrecord <DNS_RECORD>
       --ttl <TTL>
       --verbose
+      --debug
+      --dry
   -h, --help                       Print help
   -V, --version                    Print version
 ";
@@ -24,9 +25,9 @@ struct Args {
     api_token: String,
     dns_record: String, // Comma-separated DNS records
     ttl: u32,
-    dry: Option<bool>,
     verbose: Option<bool>,
     debug: Option<bool>,
+    dry: Option<bool>,
 }
 
 fn parse_args() -> Result<Args, pico_args::Error> {
@@ -43,9 +44,9 @@ fn parse_args() -> Result<Args, pico_args::Error> {
         api_token: pargs.value_from_str("--apitoken")?,
         dns_record: pargs.value_from_str("--dnsrecord")?,
         ttl: pargs.opt_value_from_fn("--ttl", parse_number)?.unwrap_or(128),
-        dry: pargs.opt_free_from_str()?,
         verbose: pargs.opt_free_from_str()?,
         debug: pargs.opt_free_from_str()?,
+        dry: pargs.opt_free_from_str()?,
     };
 
     Ok(args)
@@ -75,59 +76,54 @@ fn get_external_ip() -> Result<IpAddr, Box<dyn Error>> {
     Ok(ip)
 }
 
-fn update_cloudflare_dns(config: Args, ip: IpAddr) -> Result<(), Box<dyn Error>> {
+fn update_cloudflare_dns(args: Args, ip: IpAddr) -> Result<(), Box<dyn Error>> {
     // Split comma-separated DNS records
-    let dns_records: Vec<&str> = config.dns_record.split(',').collect();
+    let dns_records: Vec<&str> = args.dns_record.split(',').collect();
 
     for record in dns_records {
         log::info!("Fetching DNS record for: {}", record);
 
         let res = minreq::get(format!(
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records?type=A&name={}",
-            config.zone_id, record
+            args.zone_id, record
         ))
-            .with_header("Authorization", format!("Bearer {}", config.api_token))
+            .with_header("Authorization", format!("Bearer {}", args.api_token))
             .with_header("Content-Type", "application/json")
             .send()?;
 
-        let json: serde_json::Value = res.json()?;
-        if !json["success"].as_bool().unwrap_or(false) {
-            log::error!("Error getting DNS record info: {}", json);
+        let get_result = res.as_str()?;
+        if get_result.contains("success\":false") {
+            log::error!("Error getting DNS record info: {}", get_result);
             return Err("Error getting DNS record info".into());
         }
 
         // Extract the DNS record ID
-        let record_id = json["result"][0]["id"].as_str().unwrap();
+        let record_id = get_result.split("id\":\"").collect::<Vec<_>>()[1].split(",").collect::<Vec<_>>()[0].trim();
         log::info!("DNS Record ID for {} is {}", record, record_id);
 
-        let body = json!({
-            "type": "A",
-            "name": record,
-            "content": ip.to_string(),
-            "ttl": config.ttl,
-        });
+        let body = format!("{{type: \"A\", \"name\": {}, \"content\": {}, \"ttl\": {}}}", record, ip.to_string(), args.ttl);
 
-        if config.dry.unwrap_or(false) {
-            log::info!("Test mode enabled, skipping DNS record update");
-            log::info!("Would have updated DNS record for {} to IP: {}", record, ip);
-            log::info!("body: {}", body);
-            continue;
+        if args.dry.unwrap_or(false) {
+             log::info!("Test mode enabled, skipping DNS record update");
+             log::info!("Would have updated DNS record for {} to IP: {}", record, ip);
+             log::info!("payload: {}", body);
+             continue;
         }
 
-        // Update the DNS record
+        // // Update the DNS record
         let update_res = minreq::put(format!(
             "https://api.cloudflare.com/client/v4/zones/{}/dns_records/{}",
-            config.zone_id, record_id
+            args.zone_id, record_id
         ))
-            .with_header("Authorization", format!("Bearer {}", config.api_token))
-            .with_header("Content-Type", "application/json")
-            .with_json(&body)?
-            .send()?;
+             .with_header("Authorization", format!("Bearer {}", args.api_token))
+             .with_header("Content-Type", "application/json")
+             .with_body(&*body)
+             .send()?;
 
-        let update_json: serde_json::Value = update_res.json()?;
-        if !update_json["success"].as_bool().unwrap_or(false) {
-            log::error!("Failed to update DNS record: {}", update_json);
-            return Err("Failed to update DNS record".into());
+        let put_result = update_res.as_str()?;
+        if put_result.contains("success\":false") {
+            log::error!("Error getting DNS record info: {}", put_result);
+            return Err("Error getting DNS record info".into());
         }
 
         log::info!("DNS Record for {} successfully updated to IP: {}", record, ip);

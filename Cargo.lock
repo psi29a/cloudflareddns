@@ -179,7 +179,6 @@ dependencies = [
  "log",
  "minreq",
  "pico-args",
- "serde_json",
 ]
 
 [[package]]
@@ -468,8 +467,6 @@ dependencies = [
  "once_cell",
  "rustls",
  "rustls-webpki",
- "serde",
- "serde_json",
  "webpki-roots",
 ]
 
