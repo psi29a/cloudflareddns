@@ -27,3 +27,4 @@ minreq = { version = "2.12.0", default-features = false, features= ["json-using-
 
 [dev-dependencies]
 cross = "0.2.5"
+mockito = "1.5.0"

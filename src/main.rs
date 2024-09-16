@@ -209,3 +209,73 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+
+    #[test]
+    fn test_read_config_from_file() {
+        let config_content = r#"
+        zone_id = "example-zone-id"
+        api_token = "example-api-token"
+        dns_record = "example.com"
+        ttl = 3600
+        "#;
+
+        let config_path = "test_config.ini";
+        let mut file = File::create(config_path).expect("Unable to create test config file");
+        file.write_all(config_content.as_bytes()).expect("Unable to write to test config file");
+
+        let config = read_config_from_file(config_path.to_string()).expect("Failed to read config file");
+
+        assert_eq!(config.zone_id, "example-zone-id");
+        assert_eq!(config.api_token, "example-api-token");
+        assert_eq!(config.dns_record, "example.com");
+        assert_eq!(config.ttl, 3600);
+
+        std::fs::remove_file(config_path).expect("Unable to delete test config file");
+    }
+
+    #[test]
+    fn test_merge_config() {
+        let cli_args = Args {
+            zone_id: Some("cli-zone-id".to_string()),
+            api_token: None,
+            dns_record: Some("cli-dns-record".to_string()),
+            ttl: Some(7200),
+            ip: None,
+            config: None,
+            dry: false,
+            verbose: false,
+            debug: false,
+        };
+
+        let file_config = Some(CloudFlareDDNSConfig {
+            zone_id: "file-zone-id".to_string(),
+            api_token: "file-api-token".to_string(),
+            dns_record: "file-dns-record".to_string(),
+            ttl: 3600,
+        });
+
+        let merged_config = merge_config(cli_args, file_config);
+
+        assert_eq!(merged_config.zone_id, "cli-zone-id");
+        assert_eq!(merged_config.api_token, "file-api-token");
+        assert_eq!(merged_config.dns_record, "cli-dns-record");
+        assert_eq!(merged_config.ttl, 7200);
+    }
+
+    #[test]
+    fn test_get_provided_ip() {
+        let valid_ip = "8.8.8.8".to_string();
+        let invalid_ip = "invalid_ip".to_string();
+
+        assert_eq!(get_provided_ip(Some(valid_ip)).unwrap(), "8.8.8.8".parse::<IpAddr>().unwrap());
+        assert!(get_provided_ip(Some(invalid_ip)).is_err());
+        assert!(get_provided_ip(None).is_err());
+    }
+}
